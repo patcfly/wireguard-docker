@@ -9,18 +9,40 @@ if [[ -z $interfaces ]]; then
     exit 1
 fi
 
-
 for interface in $interfaces; do
     echo "$(date): Starting Wireguard $interface"
     wg-quick up $interface
 done
 
-# Add masquerade rule for NAT'ing VPN traffic bound for the Internet
 
+## Verify thet wireguard module is installed:
+wg_module=`find /lib/modules/$(uname -r) -type f -name '*.ko' | grep -i wireguard`
+echo "Module output: $wg_module"
+
+if [[ -z $wg_module ]]; then
+  echo "$(date): Wireguard module not installed..  Installing" >&2
+  apt update ; apt install -y linux-headers-amd64 wireguard-dkms
+else
+  echo "Wireguard module seems to be installed: $wg_module      Moving on... "
+fi
+
+
+# Add masquerade rule for NAT'ing VPN traffic bound for the Internet
 if [[ $IPTABLES_MASQ -eq 1 ]]; then
     echo "Adding iptables NAT rule"
     iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 fi
+
+
+# Fix route back to local network
+if [[ -z $LOCAL_NETWORK ]]; then
+  echo "$(date): ---INFO--- No network provides. Ignoring route back to local network"
+else
+  echo "$(date): ---INFO---  Adding route back to local network: $LOCAL_NETWORK"
+  gw=$(ip route |awk '/default/ {print $3}')
+  ip route add to $LOCAL_NETWORK via $gw dev eth0
+fi
+
 
 # Handle shutdown behavior
 finish () {
