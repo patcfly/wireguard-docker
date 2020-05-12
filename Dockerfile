@@ -1,8 +1,5 @@
 FROM debian:buster
 
-# Force rebuild on docker hub
-RUN echo "force rebuild 2020-05-11"
-
 # Add debian backports repo for wireguard packages
 RUN echo "deb http://deb.debian.org/debian/ buster-backports main" > /etc/apt/sources.list.d/buster-backports.list
 
