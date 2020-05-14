@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 ## The below is modified from https://github.com/activeeos/wireguard-docker
 
 # Find a Wireguard interface
@@ -73,18 +75,33 @@ function fill_actual_ip {
 trap finish SIGTERM SIGINT SIGQUIT
 
 
-# check IP address every 10 seconds
 fill_actual_ip
 echo "$(date): ---INFO---  Endpoint in config: $expected_ips"
 echo "$(date): ---INFO---  Active EndPoint : $actual_ips"
 
-while [[ $expected_ips == $actual_ips ]];
+# check IP address every 10 seconds
+retry=true
+while $retry
 do
     fill_actual_ip
 
+    if [[ $expected_ips != $actual_ips ]];
+    then
+        # make one attempt to restart the wireguard interface if the IP is incorrect
+	echo "$(date): Expected IP to be $expected_ips but found $actual_ips. Attempting to restart wireguard."
+	for interface in $interfaces; do
+            wg-quick down $interface && wg-quick up $interface
+        done
+    fi
+
+    fill_actual_ip
+
+    if [[ $expected_ips != $actual_ips ]];
+    then
+        # exit the container if the IP is still incorrect after wireguard restart
+        echo "$(date): Expected IP to be $expected_ips but found $actual_ips. Activating killswitch."
+	retry=false
+    fi
+
     sleep 10;
 done
-
-echo "$(date): ---INFO---  Endpoint in config: $expected_ips"
-echo "$(date): ---INFO---  Active EndPoint : $actual_ips"
-echo "$(date): Expected IP to be $expected_ips but found $actual_ips. Activating killswitch."
