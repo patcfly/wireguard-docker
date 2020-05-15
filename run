@@ -74,17 +74,28 @@ function fill_actual_ip {
 
 trap finish SIGTERM SIGINT SIGQUIT
 
+function write_service_hosts {
+    services=(wireguard filebot sonarr radarr bazarr tautulli plex announcedd)
+    for service in ${services[@]}; do
+	service_subnet=$(docker network inspect mediaserver-docker_default | jq -r ".[0].Containers[] | select(.Name==\"$service\").IPv4Address")
+	service_ip=${service_subnet%%/*}
+	service_host="$service_ip $service"
+	echo $service_host
+        echo $service_host >> /etc/hosts
+    done
+}
 
 fill_actual_ip
 echo "$(date): ---INFO---  Endpoint in config: $expected_ips"
 echo "$(date): ---INFO---  Active EndPoint : $actual_ips"
+
+write_service_hosts
 
 # check IP address every 10 seconds
 retry=true
 while $retry
 do
     fill_actual_ip
-
     if [[ $expected_ips != $actual_ips ]];
     then
         # make one attempt to restart the wireguard interface if the IP is incorrect
@@ -92,15 +103,14 @@ do
 	for interface in $interfaces; do
             wg-quick down $interface && wg-quick up $interface
         done
-    fi
 
-    fill_actual_ip
-
-    if [[ $expected_ips != $actual_ips ]];
-    then
-        # exit the container if the IP is still incorrect after wireguard restart
-        echo "$(date): Expected IP to be $expected_ips but found $actual_ips. Activating killswitch."
-	retry=false
+        fill_actual_ip
+        if [[ $expected_ips != $actual_ips ]];
+        then
+            # exit the container if the IP is still incorrect after wireguard restart
+            echo "$(date): Expected IP to be $expected_ips but found $actual_ips. Activating killswitch."
+	    retry=false
+        fi
     fi
 
     sleep 10;
