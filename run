@@ -75,14 +75,10 @@ function fill_actual_ip {
 trap finish SIGTERM SIGINT SIGQUIT
 
 function write_service_hosts {
-    services=(wireguard filebot sonarr radarr bazarr tautulli plex announcedd)
-    for service in ${services[@]}; do
-	service_subnet=$(docker network inspect mediaserver-docker_default | jq -r ".[0].Containers[] | select(.Name==\"$service\").IPv4Address")
-	service_ip=${service_subnet%%/*}
-	service_host="$service_ip $service"
-	echo $service_host
-        echo $service_host >> /etc/hosts
-    done
+    service_hosts=$(docker network inspect mediaserver-docker_default | jq -r ".[0].Containers[] | .IPv4Address + \" \" + .Name | sub(\"/16\"; \"\")")
+    echo "adding services to /etc/hosts"
+    echo "$service_hosts"
+    echo "$service_hosts" >> /etc/hosts
 }
 
 fill_actual_ip
