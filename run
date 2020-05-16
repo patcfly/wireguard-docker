@@ -97,6 +97,8 @@ write_service_hosts
 retry=true
 while $retry
 do
+    sleep 10;
+
     fill_actual_ip
     if [[ $expected_ips != $actual_ips ]];
     then
@@ -114,6 +116,4 @@ do
             retry=false
         fi
     fi
-
-    sleep 10;
 done
