@@ -75,7 +75,8 @@ function fill_actual_ip {
 trap finish SIGTERM SIGINT SIGQUIT
 
 function write_service_hosts {
-    service_hosts=$(docker network inspect mediaserver-docker_default | jq -r ".[0].Containers[] | .IPv4Address + \" \" + .Name | sub(\"/16\"; \"\")")
+    NETWORK_NAME=${NETWORK_NAME:-mediaserver-docker_default}
+    service_hosts=$(docker network inspect $NETWORK_NAME | jq -r ".[0].Containers[] | .IPv4Address + \" \" + .Name | sub(\"/16\"; \"\")")
     echo "adding services to /etc/hosts"
     echo "$service_hosts"
     echo "$service_hosts" >> /etc/hosts
