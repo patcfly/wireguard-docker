@@ -1,37 +1,35 @@
 #!/bin/bash
 
-set -euo pipefail
-
 ## The below is modified from https://github.com/activeeos/wireguard-docker
 
 # Find a Wireguard interface
 interfaces=`find /etc/wireguard -type f`
 if [[ -z $interfaces ]]; then
-    echo "$(date): Interface not found in /etc/wireguard" >&2
+    echo "$(date): ---FATAL--- Interface not found in /etc/wireguard" >&2
     exit 1
 fi
 
 for interface in $interfaces; do
-    echo "$(date): Starting Wireguard $interface"
+    echo "$(date): ---INFO--- Starting Wireguard $interface"
     wg-quick up $interface
 done
 
 
-## Verify thet wireguard module is installed:
+## Verify thet wireguard module is installed
 wg_module=`find /lib/modules/$(uname -r) -type f -name '*.ko' | grep -i wireguard`
-echo "Module output: $wg_module"
+echo "$(date): ---INFO--- Module output: $wg_module"
 
 if [[ -z $wg_module ]]; then
-    echo "$(date): Wireguard module not installed..  Installing" >&2
+    echo "$(date): ---INFO--- Wireguard module not installed..  Installing" >&2
     apt update ; apt install -y linux-headers-amd64 wireguard-dkms
 else
-    echo "Wireguard module seems to be installed: $wg_module      Moving on... "
+    echo "$(date): ---INFO--- Wireguard module seems to be installed: $wg_module      Moving on... "
 fi
 
 
 # Add masquerade rule for NAT'ing VPN traffic bound for the Internet
 if [[ $IPTABLES_MASQ -eq 1 ]]; then
-    echo "Adding iptables NAT rule"
+    echo "$(date): ---INFO--- Adding iptables NAT rule"
     iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 fi
 
@@ -40,13 +38,13 @@ fi
 if [[ -z $LOCAL_NETWORK ]]; then
     echo "$(date): ---INFO--- No network provides. Ignoring route back to local network"
 else
-    echo "$(date): ---INFO---  Adding route back to local network: $LOCAL_NETWORK"
+    echo "$(date): ---INFO--- Adding route back to local network: $LOCAL_NETWORK"
     gw=$(ip route |awk '/default/ {print $3}')
     ip route add to $LOCAL_NETWORK via $gw dev eth0
 fi
 
 
-# get the expected VPN IP address from the interface config file
+# Get the expected VPN IP address from the interface config file
 expected_ips=()
 for interface in $interfaces; do
     expected_ip=$(grep -Po 'Endpoint\s=\s\K[^:]*' $interface)
@@ -55,7 +53,7 @@ done
 
 # Handle shutdown behavior
 function finish {
-    echo "$(date): Shutting down Wireguard"
+    echo "$(date): ---INFO--- Shutting down Wireguard"
     for interface in $interfaces; do
         wg-quick down $interface
     done
@@ -66,20 +64,27 @@ function finish {
     exit 0
 }
 
+# Fill get the actual IP as reported by wireguard
 function fill_actual_ip {
     actual_ips=()
-    actual_ip=$( wg | grep -Po 'endpoint:\s\K[^:]*')
+    actual_ip=$(wg | grep -Po 'endpoint:\s\K[^:]*')
     actual_ips+=($actual_ip)
 }
 
 trap finish SIGTERM SIGINT SIGQUIT
 
+# Write /etc/hosts with service addresses to fix docker service  DNS resolution
 function write_service_hosts {
     NETWORK_NAME=${NETWORK_NAME:-mediaserver-docker_default}
-    service_hosts=$(docker network inspect $NETWORK_NAME | jq -r ".[0].Containers[] | .IPv4Address + \" \" + .Name | sub(\"/16\"; \"\")")
-    echo "adding services to /etc/hosts"
-    echo "$service_hosts"
-    echo "$service_hosts" >> /etc/hosts
+    service_hosts=$(docker network inspect $NETWORK_NAME) || true
+    if [[ ${service_hosts[@]+"${service_hosts[@]}"} && $service_hosts != "[]" ]]; then
+        echo "$(date): ---INFO--- Adding services to /etc/hosts"
+        service_hosts=$(echo $service_hosts | jq -r ".[0].Containers[] | .IPv4Address + \" \" + .Name | sub(\"/16\"; \"\")")
+        echo "$service_hosts"
+        echo "$service_hosts" >> /etc/hosts
+    else
+        echo "$(date): ---WARNING--- No response from docker network inspect. Did you mount docker.sock?"
+    fi
 }
 
 fill_actual_ip
@@ -88,25 +93,25 @@ echo "$(date): ---INFO---  Active EndPoint : $actual_ips"
 
 write_service_hosts
 
-# check IP address every 10 seconds
+# Check IP address every 10 seconds
 retry=true
 while $retry
 do
     fill_actual_ip
     if [[ $expected_ips != $actual_ips ]];
     then
-        # make one attempt to restart the wireguard interface if the IP is incorrect
-	echo "$(date): Expected IP to be $expected_ips but found $actual_ips. Attempting to restart wireguard."
-	for interface in $interfaces; do
-            wg-quick down $interface && wg-quick up $interface
+        # Make one attempt to restart the wireguard interface if the IP is incorrect
+        echo "$(date): ---WARNING--- Expected IP to be $expected_ips but found $actual_ips. Attempting to restart wireguard."
+        for interface in $interfaces; do
+            wg-quick down $interface; wg-quick up $interface
         done
 
         fill_actual_ip
         if [[ $expected_ips != $actual_ips ]];
         then
-            # exit the container if the IP is still incorrect after wireguard restart
-            echo "$(date): Expected IP to be $expected_ips but found $actual_ips. Activating killswitch."
-	    retry=false
+            # Exit the container if the IP is still incorrect after wireguard restart
+            echo "$(date): ---WARNING--- Expected IP to be $expected_ips but found $actual_ips. Activating killswitch."
+            retry=false
         fi
     fi
 
