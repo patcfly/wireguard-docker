@@ -31,12 +31,69 @@ fi
 if [[ $IPTABLES_MASQ -eq 1 ]]; then
     echo "$(date): ---INFO--- Adding iptables NAT rule"
     iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+else
+    echo "$(date): ---INFO--- IPTABLES_MASQ not set; not adding iptables NAT rule"
+fi
+
+
+## Do some DNS fixing
+# write /etc/dnsmasq.conf
+cat << 'EOF' > /etc/dnsmasq.conf
+# dont use hosts nameservers
+no-resolv
+
+# listen on 127.0.0.1
+listen-address=127.0.0.1
+EOF
+
+if [[ -n $LOCAL_TLD ]]; then
+    echo "" >> /etc/dnsmasq.conf
+    echo "$(date): ---INFO--- Writing \"server=/$LOCAL_TLD/127.0.0.11\" to /etc/dnsmasq.conf"
+    echo "# send queries for $LOCAL_TLD domain to docker DNS" >> /etc/dnsmasq.conf
+    echo server=/$LOCAL_TLD/127.0.0.11 >> /etc/dnsmasq.conf
+fi
+
+for service_name in $SERVICE_NAMES; do
+    echo "$(date): ---INFO--- Writing \"server=/$service_name/127.0.0.11\" to /etc/dnsmasq.conf"
+    echo server=/$service_name/127.0.0.11 >> /etc/dnsmasq.conf
+done
+
+echo "" >> /etc/dnsmasq.conf
+echo "# send all other queries to interface DNS server" >> /etc/dnsmasq.conf
+default_dns="1.1.1.1"
+dns_found=""
+# look for DNS addresses like DNS =
+for interface in $interfaces; do
+    dns_address=$(grep -Po '^DNS\s?=\s?\K[0-9\.]{7,}' $interface)
+    if [[ -n $dns_address ]]; then
+        dns_found="true"
+        echo "$(date): ---INFO--- Writing \"server=$dns_address\" to /etc/dnsmasq.conf"
+        echo server=$dns_address >> /etc/dnsmasq.conf
+    fi
+    dns_address=""
+done
+# if no DNS addresses were found, write the default address
+if [[ -z $dns_found ]]; then
+    echo "$(date): ---INFO--- No DNS address found in interfaces. Writing default address \"server=$default_dns\""
+    echo server=$default_dns >> /etc/dnsmasq.conf
+fi
+
+# restart dnsmasq
+/etc/init.d/dnsmasq restart
+
+# write /etc/resolv.conf
+cat << 'EOF' > /etc/resolv.conf
+# set nameserver to 127.0.0.1 to use dnsmasq to resolve DNS
+nameserver 127.0.0.1
+EOF
+if [[ -n $LOCAL_TLD ]]; then
+    echo "search $LOCAL_TLD" >> /etc/resolv.conf
 fi
 
 
 # Fix route back to local network
 if [[ -z $LOCAL_NETWORK ]]; then
-    echo "$(date): ---INFO--- No network provides. Ignoring route back to local network"
+    echo "$(date): ---INFO--- No network provided. Ignoring route back to local network"
 else
     echo "$(date): ---INFO--- Adding route back to local network: $LOCAL_NETWORK"
     gw=$(ip route |awk '/default/ {print $3}')
@@ -47,7 +104,7 @@ fi
 # Get the expected VPN IP address from the interface config file
 expected_ips=()
 for interface in $interfaces; do
-    expected_ip=$(grep -Po 'Endpoint\s=\s\K[^:]*' $interface)
+    expected_ip=$(grep -Po '^Endpoint\s?=\s?\K[0-9\.]{7,}' $interface)
     expected_ips+=($expected_ip)
 done
 
@@ -79,7 +136,7 @@ function write_service_hosts {
     service_hosts=$(docker network inspect $NETWORK_NAME) || true
     if [[ ${service_hosts[@]+"${service_hosts[@]}"} && $service_hosts != "[]" ]]; then
         echo "$(date): ---INFO--- Adding services to /etc/hosts"
-        service_hosts=$(echo $service_hosts | jq -r ".[0].Containers[] | .IPv4Address + \" \" + .Name | sub(\"/16\"; \"\")")
+        service_hosts=$(echo $service_hosts | jq -r '.[0].Containers[] | .IPv4Address + " " + .Name | gsub("/[0-9]{1,}"; "")')
         echo "$service_hosts"
         echo "$service_hosts" >> /etc/hosts
     else
@@ -88,8 +145,8 @@ function write_service_hosts {
 }
 
 fill_actual_ip
-echo "$(date): ---INFO---  Endpoint in config: $expected_ips"
-echo "$(date): ---INFO---  Active EndPoint : $actual_ips"
+echo "$(date): ---INFO--- Endpoint in config: $expected_ips"
+echo "$(date): ---INFO--- Active EndPoint : $actual_ips"
 
 write_service_hosts
 
