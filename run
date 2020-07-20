@@ -114,7 +114,7 @@ function finish {
     for interface in $interfaces; do
         wg-quick down $interface
     done
-    if [[ $IPTABLES_MASQ -eq 1 ]]; then
+    if [ $IPTABLES_MASQ -eq 1 ]; then
         iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
     fi
 
@@ -128,9 +128,9 @@ function fill_actual_ip {
     actual_ips+=($actual_ip)
 }
 
-trap finish SIGTERM SIGINT SIGQUIT
+trap finish TERM INT QUIT
 
-# Write /etc/hosts with service addresses to fix docker service  DNS resolution
+# Write /etc/hosts with service addresses to fix docker service DNS resolution
 function write_service_hosts {
     NETWORK_NAME=${NETWORK_NAME:-mediaserver-docker_default}
     service_hosts=$(docker network inspect $NETWORK_NAME) || true
