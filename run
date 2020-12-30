@@ -100,14 +100,6 @@ else
     ip route add to $LOCAL_NETWORK via $gw dev eth0
 fi
 
-
-# Get the expected VPN IP address from the interface config file
-expected_ips=()
-for interface in $interfaces; do
-    expected_ip=$(grep -Po '^Endpoint\s?=\s?\K[0-9\.]{7,}' $interface)
-    expected_ips+=($expected_ip)
-done
-
 # Handle shutdown behavior
 function finish {
     echo "$(date): ---INFO--- Shutting down Wireguard"
@@ -121,8 +113,14 @@ function finish {
     exit 0
 }
 
-# Fill get the actual IP as reported by wireguard
-function fill_actual_ip {
+# Fill the expected and actual ips
+function fill_ips {
+    expected_ips=()
+    for interface in $interfaces; do
+        expected_ip=$(grep -Po '^Endpoint\s?=\s?\K[0-9\.]{7,}' $interface)
+        expected_ips+=($expected_ip)
+    done
+
     actual_ips=()
     actual_ip=$(wg | grep -Po 'endpoint:\s\K[^:]*')
     actual_ips+=($actual_ip)
@@ -144,7 +142,7 @@ function write_service_hosts {
     fi
 }
 
-fill_actual_ip
+fill_ips
 echo "$(date): ---INFO--- Endpoint in config: $expected_ips"
 echo "$(date): ---INFO--- Active EndPoint : $actual_ips"
 
@@ -156,7 +154,7 @@ while $retry
 do
     sleep 10;
 
-    fill_actual_ip
+    fill_ips
     if [[ $expected_ips != $actual_ips ]];
     then
         # Make one attempt to restart the wireguard interface if the IP is incorrect
@@ -165,7 +163,7 @@ do
             wg-quick down $interface; wg-quick up $interface
         done
 
-        fill_actual_ip
+        fill_ips
         if [[ $expected_ips != $actual_ips ]];
         then
             # Exit the container if the IP is still incorrect after wireguard restart
