@@ -1,11 +1,11 @@
-FROM debian:buster
+FROM debian:bullseye-slim
 
 # Add debian backports repo for wireguard packages
-RUN echo "deb http://deb.debian.org/debian/ buster-backports main" > /etc/apt/sources.list.d/buster-backports.list
+RUN echo "deb http://deb.debian.org/debian/ bullseye-backports main" > /etc/apt/sources.list.d/buster-backports.list
 
 # Install wireguard packges
 RUN apt-get update && \
- apt-get install -y --no-install-recommends wireguard-tools iptables nano net-tools procps openresolv docker.io jq dnsmasq curl dnsutils && \
+ apt-get install -y --no-install-recommends wireguard-tools iproute2 iptables nano net-tools procps openresolv docker.io jq dnsmasq curl dnsutils && \
  apt-get clean
 
 # Add main work dir to PATH

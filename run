@@ -148,7 +148,7 @@ echo "$(date): ---INFO--- Active EndPoint : $actual_ips"
 
 write_service_hosts
 
-# Check IP address every 10 seconds
+Check IP address every 10 seconds
 retry=true
 while $retry
 do
