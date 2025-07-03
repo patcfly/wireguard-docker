@@ -5,7 +5,7 @@ FROM debian:bookworm-slim
 
 # Install wireguard packges
 RUN apt-get update && \
- apt-get install -y --no-install-recommends wireguard-tools iproute2 iptables nano net-tools procps openresolv docker.io jq dnsmasq curl dnsutils && \
+ apt-get install -y --no-install-recommends wireguard-tools iproute2 iptables nano net-tools procps openresolv docker.io jq dnsmasq curl dnsutils cosign && \
  apt-get clean
 
 # Add main work dir to PATH
